@@ -1,0 +1,194 @@
+#!/usr/bin/python3
+
+from plano import *
+
+def run_test(east_kubeconfig, west_kubeconfig, north_kubeconfig, south_kubeconfig):
+    east_connection_token = make_temp_file()
+    west_connection_token = make_temp_file()
+
+    with working_env(KUBECONFIG=east_kubeconfig):
+        call("kubectl create namespace east")
+        call("kubectl config set-context --current --namespace east")
+
+        call("skupper init")
+
+    with working_env(KUBECONFIG=west_kubeconfig):
+        call("kubectl create namespace west")
+        call("kubectl config set-context --current --namespace west")
+
+        call("skupper init")
+
+    with working_env(KUBECONFIG=north_kubeconfig):
+        call("kubectl create namespace north")
+        call("kubectl config set-context --current --namespace north")
+
+        call("skupper init --edge")
+
+    with working_env(KUBECONFIG=south_kubeconfig):
+        call("kubectl create namespace south")
+        call("kubectl config set-context --current --namespace south")
+
+        call("skupper init --edge")
+
+    with working_env(KUBECONFIG=east_kubeconfig):
+        wait_for_resource("deployment", "skupper-proxy-controller")
+        wait_for_resource("deployment", "skupper-router")
+
+        call(f"skupper connection-token {east_connection_token}")
+
+    with working_env(KUBECONFIG=west_kubeconfig):
+        wait_for_resource("deployment", "skupper-proxy-controller")
+        wait_for_resource("deployment", "skupper-router")
+
+        call(f"skupper connection-token {west_connection_token}")
+
+    with working_env(KUBECONFIG=north_kubeconfig):
+        call(f"skupper connect {east_connection_token} --connection-name north-east")
+
+        try:
+            call("skupper check-connection --wait 180 north-east")
+        except:
+            with working_env(KUBECONFIG=north_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            with working_env(KUBECONFIG=east_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            raise
+
+        call(f"skupper connect {west_connection_token} --connection-name north-west")
+
+        try:
+            call("skupper check-connection --wait 180 north-west")
+        except:
+            with working_env(KUBECONFIG=north_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            with working_env(KUBECONFIG=west_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            raise
+
+    with working_env(KUBECONFIG=south_kubeconfig):
+        call(f"skupper connect {east_connection_token} --connection-name south-east")
+
+        try:
+            call("skupper check-connection --wait 180 south-east")
+        except:
+            with working_env(KUBECONFIG=south_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            with working_env(KUBECONFIG=east_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            raise
+
+        call(f"skupper connect {west_connection_token} --connection-name south-west")
+
+        try:
+            call("skupper check-connection --wait 180 south-west")
+        except:
+            with working_env(KUBECONFIG=south_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            with working_env(KUBECONFIG=west_kubeconfig):
+                call("kubectl logs deployment/skupper-router")
+
+            raise
+
+    while input("Are you done (yes)? ") != "yes":
+        pass
+
+    with working_env(KUBECONFIG=east_kubeconfig):
+        call("skupper delete")
+        call("kubectl delete namespace east")
+
+    with working_env(KUBECONFIG=west_kubeconfig):
+        call("skupper delete")
+        call("kubectl delete namespace west")
+
+    with working_env(KUBECONFIG=north_kubeconfig):
+        call("skupper delete")
+
+    with working_env(KUBECONFIG=south_kubeconfig):
+        call("skupper delete")
+
+def check_environment():
+    call("kubectl version")
+    call("skupper version")
+    call("curl --version")
+
+# Eventually Kubernetes will make this nicer:
+# https://github.com/kubernetes/kubernetes/pull/87399
+# https://github.com/kubernetes/kubernetes/issues/80828
+# https://github.com/kubernetes/kubernetes/issues/83094
+def wait_for_resource(group, name):
+    notice(f"Waiting for {group}/{name} to be available")
+
+    for i in range(60):
+        sleep(1)
+
+        if call_for_exit_code(f"kubectl get {group}/{name}") == 0:
+            break
+    else:
+        fail(f"Timed out waiting for {group}/{name}")
+
+    if group == "deployment":
+        try:
+            call(f"kubectl wait --for condition=available --timeout 60s {group}/{name}")
+        except:
+            call(f"kubectl logs {group}/{name}")
+            raise
+
+def get_ingress_ip(service_name):
+    wait_for_resource("service", service_name)
+
+    for i in range(60):
+        sleep(1)
+
+        if call_for_stdout(f"kubectl get service/{service_name} -o jsonpath='{{.status.loadBalancer.ingress}}'") != "":
+            break
+    else:
+        fail(f"Timed out waiting for ingress for {service_name}")
+
+    return call_for_stdout(f"kubectl get service/{service_name} -o jsonpath='{{.status.loadBalancer.ingress[0].ip}}'")
+
+def main():
+    check_environment()
+
+    call("minikube version")
+
+    test_profile = "skupper-example-high-availability"
+    test_kubeconfig = make_temp_file()
+
+    gke_kubeconfig = ARGS[1]
+
+    east_kubeconfig = make_temp_file()
+    west_kubeconfig = make_temp_file()
+    north_kubeconfig = make_temp_file()
+    south_kubeconfig = make_temp_file()
+
+    copy(gke_kubeconfig, east_kubeconfig)
+    copy(gke_kubeconfig, west_kubeconfig)
+
+    try:
+        with working_env(KUBECONFIG=test_kubeconfig):
+            call(f"minikube start -p {test_profile}")
+
+            copy(test_kubeconfig, north_kubeconfig)
+            copy(test_kubeconfig, south_kubeconfig)
+
+            run_test(east_kubeconfig, west_kubeconfig, north_kubeconfig, south_kubeconfig)
+
+            notice("Test result: PASSED")
+    except:
+        error("Test result: FAILED")
+        raise
+    finally:
+        call(f"minikube delete -p {test_profile}")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
