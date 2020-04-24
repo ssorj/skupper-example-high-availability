@@ -1,6 +1,10 @@
-.phony: run
-run:
-	scripts/run ~/.kube/config-gke
+.phony: test
+test:
+	scripts/test-minikube
+
+.phony: demo
+demo:
+	SKUPPER_DEMO=1 scripts/test-minikube
 
 .phony: clean
 clean:
