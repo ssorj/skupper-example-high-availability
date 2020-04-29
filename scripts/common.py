@@ -42,9 +42,13 @@ def run_test(west_kubeconfig, east_kubeconfig):
         call("skupper expose deployment hello-world-frontend --port 8080 --protocol http")
         call("skupper expose deployment hello-world-backend --port 8080 --protocol http")
 
+        call("skupper list-exposed") # XXX
+
     with working_env(KUBECONFIG=west_kubeconfig):
         call("skupper expose deployment hello-world-frontend --port 8080 --protocol http")
         call("skupper expose deployment hello-world-backend --port 8080 --protocol http")
+
+        call("skupper list-exposed") # XXX
 
         wait_for_resource("service", "hello-world-backend")
         wait_for_resource("deployment", "hello-world-backend-proxy")
@@ -74,15 +78,21 @@ def run_test(west_kubeconfig, east_kubeconfig):
 
     if "SKUPPER_DEMO" in ENV:
         with working_env(KUBECONFIG=west_kubeconfig):
-            console_ip = get_ingress_ip('service', 'skupper-controller')
+            console_ip = get_ingress_ip("service", "skupper-controller")
             console_url = f"http://{console_ip}:8080/"
             password_data = call_for_stdout("kubectl get secret skupper-console-users -o jsonpath='{.data.admin}'")
             password = base64_decode(password_data).decode("ascii")
 
+        print()
+        print("Demo time!")
+        print()
+        print(f"West kubeconfig: {west_kubeconfig}")
+        print(f"East kubeconfig: {east_kubeconfig}")
         print(f"Frontend URL: {frontend_url}")
         print(f"Console URL: {console_url}")
         print("User: admin")
         print(f"Password: {password}")
+        print()
 
         while input("Are you done (yes)? ") != "yes":
             pass
