@@ -1,4 +1,4 @@
-from plano import *
+from skewer import *
 
 def run_test(west_kubeconfig, east_kubeconfig):
     connection_token = make_temp_file()
@@ -105,50 +105,3 @@ def run_test(west_kubeconfig, east_kubeconfig):
     with working_env(KUBECONFIG=west_kubeconfig):
         call("skupper delete")
         call("kubectl delete deployment/hello-world-frontend")
-
-def check_environment():
-    call("kubectl version --client --short")
-    call("skupper --version")
-    call("curl --version")
-
-# Eventually Kubernetes will make this nicer:
-# https://github.com/kubernetes/kubernetes/pull/87399
-# https://github.com/kubernetes/kubernetes/issues/80828
-# https://github.com/kubernetes/kubernetes/issues/83094
-def wait_for_resource(group, name):
-    notice(f"Waiting for {group}/{name} to be available")
-
-    for i in range(60):
-        sleep(1)
-
-        if call_for_exit_code(f"kubectl get {group}/{name}") == 0:
-            break
-    else:
-        fail(f"Timed out waiting for {group}/{name}")
-
-    if group == "deployment":
-        try:
-            call(f"kubectl wait --for condition=available --timeout 60s {group}/{name}")
-        except:
-            call(f"kubectl logs {group}/{name}")
-            raise
-
-def wait_for_connection(name):
-    try:
-        call(f"skupper check-connection --wait 60 {name}")
-    except:
-        call("kubectl logs deployment/skupper-router")
-        raise
-
-def get_ingress_ip(group, name):
-    wait_for_resource(group, name)
-
-    for i in range(60):
-        sleep(1)
-
-        if call_for_stdout(f"kubectl get {group}/{name} -o jsonpath='{{.status.loadBalancer.ingress}}'") != "":
-            break
-    else:
-        fail(f"Timed out waiting for ingress for {group}/{name}")
-
-    return call_for_stdout(f"kubectl get {group}/{name} -o jsonpath='{{.status.loadBalancer.ingress[0].ip}}'")
