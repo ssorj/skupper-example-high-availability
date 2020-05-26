@@ -1,10 +1,10 @@
 .phony: test
 test:
-	scripts/test-minikube
+	python3 scripts/test-minikube
 
 .phony: demo
 demo:
-	SKUPPER_DEMO=1 scripts/test-minikube
+	SKUPPER_DEMO=1 python3 scripts/test-minikube
 
 .phony: clean
 clean:
@@ -13,7 +13,3 @@ clean:
 
 README.html: README.md
 	pandoc -o $@ $<
-
-.phony: update-%
-update-%:
-	curl -sfo scripts/$*.py "https://raw.githubusercontent.com/ssorj/$*/master/python/$*.py"

@@ -1,6 +1,11 @@
 from skewer import *
 
 def run_test(west_kubeconfig, east_kubeconfig):
+    # XXX
+    ENV["SKUPPER_PROXY_IMAGE"] = "quay.io/skupper/proxy:latest"
+    ENV["SKUPPER_CONTROLLER_IMAGE"] = "quay.io/ernieallen/controller:latest"
+    # End XXX
+
     connection_token = make_temp_file()
 
     with working_env(KUBECONFIG=west_kubeconfig):
