@@ -1,12 +1,12 @@
-.phony: test
+.PHONY: test
 test:
 	python3 scripts/test-minikube
 
-.phony: demo
+.PHONY: demo
 demo:
 	SKUPPER_DEMO=1 python3 scripts/test-minikube
 
-.phony: clean
+.PHONY: clean
 clean:
 	rm -rf scripts/__pycache__
 	rm -f README.html
